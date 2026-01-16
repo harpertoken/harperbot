@@ -115,8 +115,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.HARPER_BOT_APP_ID }}
-          private-key: ${{ secrets.HARPER_BOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
 
     # Run HarperBot to analyze PR with Gemini AI
       - name: Run Gemini PR Bot
