@@ -142,3 +142,26 @@ jobs:
           python ./harperbot/harperbot.py \
             --repo ${{ github.repository }} \
             --pr ${{ github.event.pull_request.number || github.event.issue.number }}
+
+      # Example: Post inline suggestions using github-script (alternative to Python)
+      # - name: Post inline suggestions
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       // Read suggestions from file or output
+      #       const suggestions = [] // Parse from Python output or file
+      #       for (const suggestion of suggestions) {
+      #         await github.rest.pulls.createReview({
+      #           owner: context.repo.owner,
+      #           repo: context.repo.repo,
+      #           pull_number: context.issue.number,
+      #           event: 'COMMENT',
+      #           comments: [{
+      #             path: suggestion.path,
+      #             position: suggestion.position,
+      #             body: `\`\`\`suggestion\n${suggestion.diff}\n\`\`\``
+      #           }]
+      #         })
+      #       }
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
