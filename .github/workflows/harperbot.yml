@@ -116,6 +116,7 @@ jobs:
           # Verify installations
           python --version
           pip --version
+          echo "Dependencies installed successfully"
 
     # Generate GitHub App token for PR commenting
       - name: Generate GitHub App Token
