@@ -56,11 +56,11 @@ safety_settings:
 
 # Enable code authoring features
 # When enabled, HarperBot can create commits, branches, and PRs with improvements
-enable_authoring: false
+enable_authoring: true
 
 # Auto-commit suggestions to PR branches
 # Applies code suggestions directly to the PR's head branch
-auto_commit_suggestions: false
+auto_commit_suggestions: true
 
 # Create improvement PRs
 # Generates new PRs with additional improvements beyond the original changes
