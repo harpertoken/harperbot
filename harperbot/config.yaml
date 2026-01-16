@@ -94,3 +94,6 @@ prompt: |
 
   Only suggest changes to lines that are modified in the diff.
   Suggestions should be actionable and include accurate line numbers from the diff.
+
+# Post inline suggestions via workflow YAML (true) or Python (false)
+post_suggestions_in_yaml: true
