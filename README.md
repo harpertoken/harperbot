@@ -1,6 +1,8 @@
 # HarperBot Standalone Repository
 
-This is a standalone repository for HarperBot, extracted from the Friday Gemini AI project. HarperBot is an automated code review tool that uses Google's Gemini AI to analyze GitHub pull requests and provide feedback.
+This is a standalone repository for HarperBot, extracted from the Friday Gemini AI project.
+
+<!-- Test comment for PR workflow --> HarperBot is an automated code review tool that uses Google's Gemini AI to analyze GitHub pull requests and provide feedback.
 
 ## Repository Structure
 
