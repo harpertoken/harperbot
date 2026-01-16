@@ -3,25 +3,38 @@
 
 ---
 # HarperBot Configuration
-# This file configures HarperBot's analysis behavior. Modify these settings to customize the bot's performance and output.
+# This file configures HarperBot's analysis behavior.
+# Modify these settings to customize the bot's performance and output.
 # Customize the analysis focus and model
 
 # Analysis focus: 'all', 'security', 'performance', 'quality'
-# Options: 'all' for comprehensive review, 'security' for security issues only, 'performance' for optimization suggestions, 'quality' for code quality feedback
+# Options: 'all' for comprehensive review, 'security' for security issues only,
+# 'performance' for optimization suggestions, 'quality' for code quality feedback
 focus: all
 
-# Gemini model to use
-# Available options: 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'
-# Recommendations: 'gemini-2.0-flash-exp' for fast, cost-effective analysis; 'gemini-2.5-pro-exp' for higher quality but slower responses
+# AI provider to use: 'gemini' or 'cerebras'
+provider: cerebras
+
+# Gemini model to use (if provider: gemini)
+# Available options: 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash',
+# 'gemini-2.5-flash', 'gemini-2.5-pro'
+# Recommendations: 'gemini-2.0-flash-exp' for fast, cost-effective analysis;
+# 'gemini-2.5-pro-exp' for higher quality but slower responses
 # See https://ai.google.dev/models/gemini for the full list and latest models
-model: gemini-2.0-flash
+model: gemini-2.5-flash
+
+# Cerebras model to use (if provider: cerebras)
+# Available options: 'gpt-oss-120b', etc.
+cerebras_model: gpt-oss-120b
 
 # Maximum diff length to analyze (characters)
-# Limits the size of diff content sent to AI. Larger values provide more context but may hit token limits or increase costs
+# Limits the size of diff content sent to AI.
+# Larger values provide more context but may hit token limits or increase costs
 max_diff_length: 4000
 
 # Temperature for generation (0.0 to 1.0)
-# Controls randomness in AI responses. Lower values (0.0-0.3) for consistent, focused analysis; higher for more creative suggestions.
+# Controls randomness in AI responses.
+# Lower values (0.0-0.3) for consistent, focused analysis; higher for more creative suggestions.
 temperature: 0.2
 
 # Maximum output tokens
@@ -60,13 +73,16 @@ improvement_branch_pattern: "harperbot-improvements-{timestamp}"
 # AI analysis prompt template
 # Customize the prompt to change how HarperBot analyzes code
 prompt: |
-  Analyze the following code changes for improvements. Focus on code quality, best practices, performance, and correctness.
+  Analyze the following code changes for improvements.
+  Focus on code quality, best practices, performance, and correctness.
 
   Changed files:
-  {files}
+  {files_list}
 
   Diff:
-  {diff}
+  {diff_content}
+
+  Use the check_python_syntax tool if you need to verify Python code syntax.
 
   Provide specific code suggestions as diff blocks in the format:
   ```diff
@@ -76,4 +92,5 @@ prompt: |
   + new code
   ```
 
-  Only suggest changes to lines that are modified in the diff. Suggestions should be actionable and include accurate line numbers from the diff.
+  Only suggest changes to lines that are modified in the diff.
+  Suggestions should be actionable and include accurate line numbers from the diff.

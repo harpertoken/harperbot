@@ -8,6 +8,7 @@ Supports both CLI and webhook modes.
 """
 
 import argparse
+import ast
 import hashlib
 import hmac
 import logging
@@ -17,8 +18,10 @@ import sys
 
 import google.genai as genai
 import yaml
+from cerebras.cloud.sdk import Cerebras
 from dotenv import load_dotenv
 from github import Auth, Github
+from google.genai import types
 from harperbot_apply import handle_apply_comment
 
 # Flask imported conditionally for webhook mode
@@ -220,13 +223,20 @@ def analyze_with_gemini(client, pr_details):
         temperature = config.get("temperature", 0.2)
         max_output_tokens = config.get("max_output_tokens", 4096)
         safety_settings = config.get("safety_settings", [])
+        provider = config.get("provider", "gemini")
 
         # Auto-select model based on PR complexity
         diff_length = len(pr_details["diff"])
         num_files = len(pr_details["files_changed"])
-        if diff_length > 10000 or num_files > 10:
-            model_name = "gemini-2.5-flash"  # More powerful model for complex PRs
-        # For simple PRs, use the configured model (default gemini-2.0-flash)
+        if provider == "gemini":
+            if diff_length > 10000 or num_files > 10:
+                model_name = "gemini-2.5-flash"  # More powerful model for complex PRs
+            else:
+                model_name = config.get("model", "gemini-2.0-flash")
+        elif provider == "cerebras":
+            model_name = config.get("cerebras_model", "gpt-oss-120b")
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
 
         # Use client for selected model
 
@@ -247,18 +257,66 @@ def analyze_with_gemini(client, pr_details):
             focus_instruction=focus_instruction,
         )
 
-        # Generate content with config
-        response = client.models.generate_content(
-            model=model_name,
-            contents=formatted_prompt,
-            config=genai.GenerateContentConfig(
+        if provider == "gemini":
+            # Define custom tools
+            def check_python_syntax(code: str) -> str:
+                """Check Python code for syntax errors."""
+                try:
+                    ast.parse(code)
+                    return "No syntax errors found."
+                except SyntaxError as e:
+                    return f"Syntax error: {e}"
+
+            tools = [
+                types.FunctionDeclaration(
+                    name="check_python_syntax",
+                    description="Check Python code for syntax errors",
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "The Python code to check",
+                            }
+                        },
+                        "required": ["code"],
+                    },
+                )
+            ]
+
+            # Generate content with config
+            response = client.models.generate_content(
+                model=model_name,
+                contents=formatted_prompt,
+                config=types.GenerateContentConfig(
+                    temperature=temperature,
+                    top_p=0.95,
+                    top_k=40,
+                    max_output_tokens=max_output_tokens,
+                    safety_settings=safety_settings,
+                    tools=tools,
+                ),
+            )
+        elif provider == "cerebras":
+            # Use Cerebras client
+            cerebras_client = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
+            response = cerebras_client.chat.completions.create(
+                messages=[{"role": "user", "content": formatted_prompt}],
+                model=model_name,
+                max_tokens=max_output_tokens,
                 temperature=temperature,
                 top_p=0.95,
-                top_k=40,
-                max_output_tokens=max_output_tokens,
-                safety_settings=safety_settings,
-            ),
-        )
+            )
+            # Wrap response to mimic Gemini structure
+            response.text = response.choices[0].message.content
+            response.candidates = None  # No function calls for now
+
+        # Check for function calls
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "function_call"):
+                    logging.info(f"Function call detected: {part.function_call.name}")
+                    # For now, just log; full handling would execute and send back
 
         # Handle different response formats
         def extract_text(resp):

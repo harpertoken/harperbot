@@ -45,7 +45,8 @@ jobs:
       - name: Install Gemini CLI
         run: |
           # Install Node.js dependencies with pinned versions from environment
-          npm install -g @google/generative-ai@${{ env.GENERATIVE_AI_VERSION }} @google/gemini-cli@${{ env.GEMINI_CLI_VERSION }}
+          npm install -g @google/generative-ai@${{ env.GENERATIVE_AI_VERSION }} \
+            @google/gemini-cli@${{ env.GEMINI_CLI_VERSION }}
 
           # Create Gemini CLI wrapper with proper module resolution and version fallback
           cat > /usr/local/bin/gemini-wrapper << 'EOL'
@@ -56,7 +57,8 @@ jobs:
           const modulePath = require.resolve('@google/generative-ai');
           const pkgPath = path.join(path.dirname(modulePath), 'package.json');
           import(modulePath).then(m => {
-            const fallback = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version : 'unknown';
+            const fallback = fs.existsSync(pkgPath) ?
+              JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version : 'unknown';
             console.log(m.GOOGLE_GENERATIVE_AI_VERSION || fallback);
           }).catch(e => {
             console.error('Error loading @google/generative-ai:', e);
@@ -100,7 +102,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
 
-    # Install Python dependencies required for HarperBot
+      # Install Python dependencies required for HarperBot
       - name: Install dependencies
         run: |
           # Install Python dependencies
@@ -115,14 +117,15 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.HARPER_BOT_APP_ID }}
-          private-key: ${{ secrets.HARPER_BOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
 
-    # Run HarperBot to analyze PR with Gemini AI
-      - name: Run Gemini PR Bot
+      # Run HarperBot to analyze PR with AI (Gemini or Cerebras)
+      - name: Run AI PR Bot
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
           # Verify installations
           echo "Node.js: $(node --version)"
