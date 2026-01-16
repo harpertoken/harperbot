@@ -462,7 +462,7 @@ def parse_diff_for_suggestions(diff_text):
 
 def format_comment(analysis):
     """Format the analysis with proper markdown and emojis."""
-    return f"""[![HarperBot](https://github.com/bniladridas/friday_gemini_ai/actions/workflows/harperbot.yml/badge.svg)](https://github.com/bniladridas/friday_gemini_ai/actions/workflows/harperbot.yml)
+    return f"""[![HarperBot](https://github.com/harpertoken/harperbot/actions/workflows/harperbot.yml/badge.svg)](https://github.com/harpertoken/harperbot/actions/workflows/harperbot.yml)
 
 <details>
 <summary>HarperBot Analysis</summary>
@@ -720,6 +720,40 @@ def update_main_comment(analysis):
     return analysis[:start_pos] + "### Code Suggestions\n- Suggestions posted as inline comments below.\n" + analysis[end_pos:]
 
 
+def save_inline_suggestions(pr_details, suggestions):
+    """
+    Save inline code suggestions to a JSON file for workflow posting.
+    """
+    try:
+        import json
+
+        suggestions_data = []
+        for file_path, line, suggestion in suggestions:
+            try:
+                line_num = int(line)
+            except (ValueError, TypeError):
+                logging.warning(f"Invalid line number format '{line}' for suggestion in '{file_path}'. Skipping.")
+                continue
+
+            position = find_diff_position(pr_details["diff"], file_path, line_num)
+            if position is not None:
+                suggestions_data.append(
+                    {
+                        "path": file_path,
+                        "position": position,
+                        "body": f"```suggestion\n{suggestion}\n```",
+                    }
+                )
+        if suggestions_data:
+            with open("suggestions.json", "w") as f:
+                json.dump(suggestions_data, f)
+            logging.info(f"Saved {len(suggestions_data)} inline suggestions to suggestions.json")
+        else:
+            logging.info("No valid inline suggestions to save")
+    except Exception as e:
+        logging.error(f"Error saving suggestions: {str(e)}")
+
+
 def post_inline_suggestions(pr, pr_details, suggestions, github_token, repo):
     """
     Post inline code suggestions as a pull request review.
@@ -843,8 +877,8 @@ def post_comment_webhook(github_token: str, repo_name: str, pr_details: dict, an
         pr.create_issue_comment(formatted_comment)
         logging.info(f"Posted main analysis comment to PR #{pr_details['number']}")
 
-        # Post inline suggestions
-        post_inline_suggestions(pr, pr_details, suggestions, github_token, repo)
+        # Save inline suggestions for workflow posting
+        save_inline_suggestions(pr_details, suggestions)
 
         # Apply authoring features if enabled
         if config.get("enable_authoring", False):
