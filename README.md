@@ -45,6 +45,29 @@ harperbot-standalone/
 - **Linting**: Install pre-commit and run `pre-commit run --all-files`
 - **Build package**: `python -m build`
 
+## Contributing (Working on PRs)
+
+To start working on pull requests for this repository:
+
+1. **Access**: Ensure you have push access to `harpertoken/harperbot` or fork it and work via PRs.
+
+2. **Setup**:
+   - Clone: `git clone https://github.com/harpertoken/harperbot.git`
+   - Install Python 3.8+ and deps: `pip install -e .`
+   - Install pre-commit: `pip install pre-commit && pre-commit install`
+   - Set env vars: `GEMINI_API_KEY` (from Google AI Studio), `GITHUB_TOKEN` (personal access token)
+
+3. **Testing**:
+   - Run tests: `python -m pytest test/`
+   - For full functionality, set up a test GitHub repo and PR
+
+4. **Workflow**:
+   - Create branch: `git checkout -b feature/your-feature`
+   - Code, commit (use conventional commits), push
+   - Create PR on GitHub
+
+5. **Documentation**: Update `README.md` or `docs/README.md` for new features.
+
 ## Integration
 
 - **Add to another repo**: Run `bin/setup-harperbot` in the target repository
