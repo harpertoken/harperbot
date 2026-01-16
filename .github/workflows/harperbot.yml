@@ -120,11 +120,12 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.PRIVATE_KEY }}
 
-      # Run HarperBot to analyze PR with Gemini AI
-      - name: Run Gemini PR Bot
+      # Run HarperBot to analyze PR with AI (Gemini or Cerebras)
+      - name: Run AI PR Bot
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
           # Verify installations
           echo "Node.js: $(node --version)"
