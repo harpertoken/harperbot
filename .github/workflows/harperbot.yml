@@ -106,11 +106,12 @@ jobs:
       - name: Install dependencies
         run: |
           # Install Python dependencies
-          pip install --no-cache-dir PyGithub python-dotenv PyYAML google-genai
+          pip install --no-cache-dir PyGithub python-dotenv PyYAML google-genai cerebras-cloud-sdk
 
           # Verify installations
           python --version
           pip --version
+          echo "Dependencies installed successfully"
 
     # Generate GitHub App token for PR commenting
       - name: Generate GitHub App Token
