@@ -47,8 +47,7 @@ jobs:
       - name: Install Gemini CLI
         run: |
           # Install Node.js dependencies with pinned versions from environment
-          npm install -g @google/generative-ai@${{ env.GENERATIVE_AI_VERSION }} \
-            @google/gemini-cli@${{ env.GEMINI_CLI_VERSION }}
+          npm install -g @google/genai@latest
 
           # Create Gemini CLI wrapper with proper module resolution and version fallback
           cat > /usr/local/bin/gemini-wrapper << 'EOL'
