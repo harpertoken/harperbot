@@ -106,7 +106,7 @@ jobs:
       - name: Install dependencies
         run: |
           # Install Python dependencies
-          pip install --no-cache-dir PyGithub python-dotenv PyYAML google-genai
+          pip install --no-cache-dir PyGithub python-dotenv PyYAML google-genai cerebras-cloud-sdk
 
           # Verify installations
           python --version
