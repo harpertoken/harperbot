@@ -75,6 +75,8 @@ prompt: |
   Diff:
   {diff_content}
 
+  Use the check_python_syntax tool if you need to verify Python code syntax.
+
   Provide specific code suggestions as diff blocks in the format:
   ```diff
   file_path

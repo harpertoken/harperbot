@@ -8,6 +8,7 @@ Supports both CLI and webhook modes.
 """
 
 import argparse
+import ast
 import hashlib
 import hmac
 import logging
@@ -248,6 +249,32 @@ def analyze_with_gemini(client, pr_details):
             focus_instruction=focus_instruction,
         )
 
+        # Define custom tools
+        def check_python_syntax(code: str) -> str:
+            """Check Python code for syntax errors."""
+            try:
+                ast.parse(code)
+                return "No syntax errors found."
+            except SyntaxError as e:
+                return f"Syntax error: {e}"
+
+        tools = [
+            types.FunctionDeclaration(
+                name="check_python_syntax",
+                description="Check Python code for syntax errors",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": "The Python code to check",
+                        }
+                    },
+                    "required": ["code"],
+                },
+            )
+        ]
+
         # Generate content with config
         response = client.models.generate_content(
             model=model_name,
@@ -258,8 +285,16 @@ def analyze_with_gemini(client, pr_details):
                 top_k=40,
                 max_output_tokens=max_output_tokens,
                 safety_settings=safety_settings,
+                tools=tools,
             ),
         )
+
+        # Check for function calls
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "function_call"):
+                    logging.info(f"Function call detected: {part.function_call.name}")
+                    # For now, just log; full handling would execute and send back
 
         # Handle different response formats
         def extract_text(resp):
