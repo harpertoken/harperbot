@@ -1,6 +1,6 @@
 # HarperBot Standalone Repository
 
-This is a standalone repository for HarperBot, extracted from the Friday Gemini AI project. HarperBot is an automated code review tool that uses Google's Gemini AI to analyze GitHub pull requests and provide feedback.
+This is a standalone repository for HarperBot, extracted from the Friday Gemini AI project. HarperBot is an automated code review tool that uses Google's Gemini AI or Cerebras AI to analyze GitHub pull requests and provide feedback.
 
 ## Repository Structure
 
@@ -32,8 +32,8 @@ harperbot-standalone/
    ```
 
 3. **Configure**:
-   - Copy `harperbot/config.yaml` and modify as needed
-   - Set environment variables: `GEMINI_API_KEY`, `GITHUB_TOKEN` (for GitHub App mode) or `GITHUB_TOKEN` (for personal access token)
+    - Copy `harperbot/config.yaml` and modify as needed (set `provider: gemini` or `provider: cerebras`)
+    - Set environment variables: `GEMINI_API_KEY` (for Gemini), `CEREBRAS_API_KEY` (for Cerebras), `GITHUB_TOKEN`
 
 4. **Run**:
    - **CLI mode**: `python harperbot/harperbot.py --repo owner/repo --pr 123`
@@ -77,10 +77,12 @@ To start working on pull requests for this repository:
 ## Configuration
 
 Edit `harperbot/config.yaml` to customize:
-- AI model (default: gemini-2.5-flash-lite)
+- AI provider (gemini or cerebras)
+- AI model (gemini-2.5-flash for Gemini, gpt-oss-120b for Cerebras)
 - Analysis focus (all, security, performance, quality)
-- Safety settings
+- Safety settings (Gemini only)
 - Authoring features (PR creation, commits)
+- Custom functions (Gemini only)
 
 ## Notes
 
