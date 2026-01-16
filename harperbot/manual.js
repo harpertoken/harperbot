@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2025 friday_gemini_ai
+// Copyright (c) 2026 harpertoken
 
 /**
  * manual.js
