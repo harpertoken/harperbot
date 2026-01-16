@@ -12,13 +12,20 @@
 # 'performance' for optimization suggestions, 'quality' for code quality feedback
 focus: all
 
-# Gemini model to use
+# AI provider to use: 'gemini' or 'cerebras'
+provider: gemini
+
+# Gemini model to use (if provider: gemini)
 # Available options: 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash',
 # 'gemini-2.5-flash', 'gemini-2.5-pro'
 # Recommendations: 'gemini-2.0-flash-exp' for fast, cost-effective analysis;
 # 'gemini-2.5-pro-exp' for higher quality but slower responses
 # See https://ai.google.dev/models/gemini for the full list and latest models
 model: gemini-2.5-flash
+
+# Cerebras model to use (if provider: cerebras)
+# Available options: 'gpt-oss-120b', etc.
+cerebras_model: gpt-oss-120b
 
 # Maximum diff length to analyze (characters)
 # Limits the size of diff content sent to AI.

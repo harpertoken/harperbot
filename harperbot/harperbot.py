@@ -17,6 +17,7 @@ import re
 import sys
 
 import google.genai as genai
+from cerebras.cloud.sdk import Cerebras
 import yaml
 from dotenv import load_dotenv
 from github import Auth, Github
@@ -62,7 +63,11 @@ def find_diff_position(diff, file_path, line_number):
                         i += 1  # Move to hunk content
                         # Collect all lines in this hunk
                         hunk_lines = []
-                        while i < len(lines) and not lines[i].startswith("@@") and not lines[i].startswith("diff --git"):
+                        while (
+                            i < len(lines)
+                            and not lines[i].startswith("@@")
+                            and not lines[i].startswith("diff --git")
+                        ):
                             hunk_lines.append(lines[i])
                             i += 1
                         # Find the position of the target line in the hunk
@@ -95,14 +100,18 @@ def setup_environment():
     load_dotenv()
 
     # Setup logging
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
 
     # Get GitHub token and API key from environment
     github_token = os.getenv("GITHUB_TOKEN")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
 
     if not github_token or not gemini_api_key:
-        logging.error("Missing required environment variables. Ensure GITHUB_TOKEN and GEMINI_API_KEY are set.")
+        logging.error(
+            "Missing required environment variables. Ensure GITHUB_TOKEN and GEMINI_API_KEY are set."
+        )
         sys.exit(1)
 
     # Create Gemini client
@@ -222,13 +231,20 @@ def analyze_with_gemini(client, pr_details):
         temperature = config.get("temperature", 0.2)
         max_output_tokens = config.get("max_output_tokens", 4096)
         safety_settings = config.get("safety_settings", [])
+        provider = config.get("provider", "gemini")
 
         # Auto-select model based on PR complexity
         diff_length = len(pr_details["diff"])
         num_files = len(pr_details["files_changed"])
-        if diff_length > 10000 or num_files > 10:
-            model_name = "gemini-2.5-flash"  # More powerful model for complex PRs
-        # For simple PRs, use the configured model (default gemini-2.0-flash)
+        if provider == "gemini":
+            if diff_length > 10000 or num_files > 10:
+                model_name = "gemini-2.5-flash"  # More powerful model for complex PRs
+            else:
+                model_name = config.get("model", "gemini-2.0-flash")
+        elif provider == "cerebras":
+            model_name = config.get("cerebras_model", "gpt-oss-120b")
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
 
         # Use client for selected model
 
@@ -249,45 +265,59 @@ def analyze_with_gemini(client, pr_details):
             focus_instruction=focus_instruction,
         )
 
-        # Define custom tools
-        def check_python_syntax(code: str) -> str:
-            """Check Python code for syntax errors."""
-            try:
-                ast.parse(code)
-                return "No syntax errors found."
-            except SyntaxError as e:
-                return f"Syntax error: {e}"
+        if provider == "gemini":
+            # Define custom tools
+            def check_python_syntax(code: str) -> str:
+                """Check Python code for syntax errors."""
+                try:
+                    ast.parse(code)
+                    return "No syntax errors found."
+                except SyntaxError as e:
+                    return f"Syntax error: {e}"
 
-        tools = [
-            types.FunctionDeclaration(
-                name="check_python_syntax",
-                description="Check Python code for syntax errors",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "type": "string",
-                            "description": "The Python code to check",
-                        }
+            tools = [
+                types.FunctionDeclaration(
+                    name="check_python_syntax",
+                    description="Check Python code for syntax errors",
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "The Python code to check",
+                            }
+                        },
+                        "required": ["code"],
                     },
-                    "required": ["code"],
-                },
-            )
-        ]
+                )
+            ]
 
-        # Generate content with config
-        response = client.models.generate_content(
-            model=model_name,
-            contents=formatted_prompt,
-            config=types.GenerateContentConfig(
+            # Generate content with config
+            response = client.models.generate_content(
+                model=model_name,
+                contents=formatted_prompt,
+                config=types.GenerateContentConfig(
+                    temperature=temperature,
+                    top_p=0.95,
+                    top_k=40,
+                    max_output_tokens=max_output_tokens,
+                    safety_settings=safety_settings,
+                    tools=tools,
+                ),
+            )
+        elif provider == "cerebras":
+            # Use Cerebras client
+            cerebras_client = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
+            response = cerebras_client.chat.completions.create(
+                messages=[{"role": "user", "content": formatted_prompt}],
+                model=model_name,
+                max_tokens=max_output_tokens,
                 temperature=temperature,
                 top_p=0.95,
-                top_k=40,
-                max_output_tokens=max_output_tokens,
-                safety_settings=safety_settings,
-                tools=tools,
-            ),
-        )
+            )
+            # Wrap response to mimic Gemini structure
+            response.text = response.choices[0].message.content
+            response.candidates = None  # No function calls for now
 
         # Check for function calls
         if response.candidates and response.candidates[0].content.parts:
@@ -325,7 +355,11 @@ def analyze_with_gemini(client, pr_details):
                     for i, candidate in enumerate(candidates):
                         content = getattr(candidate, "content", None)
                         if content and getattr(content, "parts", None):
-                            parts = [getattr(part, "text", "") for part in content.parts if getattr(part, "text", None)]
+                            parts = [
+                                getattr(part, "text", "")
+                                for part in content.parts
+                                if getattr(part, "text", None)
+                            ]
                             if parts:
                                 logging.debug(f"Extracted text from candidate {i}")
                                 return sanitize_text("\n".join(parts).strip())
@@ -333,7 +367,11 @@ def analyze_with_gemini(client, pr_details):
                 # Try direct parts access as fallback
                 parts = getattr(resp, "parts", None)
                 if parts:
-                    parts = [getattr(part, "text", "") for part in parts if getattr(part, "text", None)]
+                    parts = [
+                        getattr(part, "text", "")
+                        for part in parts
+                        if getattr(part, "text", None)
+                    ]
                     if parts:
                         logging.debug("Extracted text from direct response.parts")
                         return sanitize_text("\n".join(parts).strip())
@@ -353,7 +391,9 @@ def analyze_with_gemini(client, pr_details):
             text = re.sub(r"</?script[^>]*>", "", text, flags=re.IGNORECASE)
             text = re.sub(r"<[^>]+>", "", text)  # Remove all HTML tags
             text = re.sub(r"javascript:", "", text, flags=re.IGNORECASE)
-            text = re.sub(r"on\w+\s*=", "", text, flags=re.IGNORECASE)  # Remove event handlers
+            text = re.sub(
+                r"on\w+\s*=", "", text, flags=re.IGNORECASE
+            )  # Remove event handlers
             # Limit length to prevent abuse
             if len(text) > 10000:
                 text = text[:10000] + "... (truncated for length)"
@@ -378,7 +418,9 @@ def analyze_with_gemini(client, pr_details):
                             return "Analysis completed but no content was generated. This may indicate an issue with the prompt or model."
 
             # If we get here, no text found - log and return safe message
-            logging.warning(f"No text extracted from response. Response type: {type(response)}")
+            logging.warning(
+                f"No text extracted from response. Response type: {type(response)}"
+            )
             return "Unable to generate analysis due to an unexpected response format. Please try again or review the code manually."
 
         except Exception as e:
@@ -388,13 +430,15 @@ def analyze_with_gemini(client, pr_details):
 
     except Exception as e:
         error_msg = str(e).lower()
-        context = (
-            f" (PR: {pr_details.get('title', 'Unknown')}, Model: {model_name}, Diff length: {len(pr_details.get('diff', ''))})"
-        )
+        context = f" (PR: {pr_details.get('title', 'Unknown')}, Model: {model_name}, Diff length: {len(pr_details.get('diff', ''))})"
         if "quota" in error_msg or "rate limit" in error_msg or "billing" in error_msg:
             logging.error(f"API quota/rate limit error{context}: {str(e)}")
             return f"Error generating analysis: API quota exceeded{context}. Please check your billing or try again later."
-        elif "api key" in error_msg or "authentication" in error_msg or "unauthorized" in error_msg:
+        elif (
+            "api key" in error_msg
+            or "authentication" in error_msg
+            or "unauthorized" in error_msg
+        ):
             logging.error(f"API authentication error{context}: {str(e)}")
             return f"Error generating analysis: Invalid API key or authentication failed{context}. Please check your GEMINI_API_KEY."
         elif "model" in error_msg or "not found" in error_msg:
@@ -495,13 +539,17 @@ def create_branch(repo, base_branch, new_branch_name):
         # Check if branch already exists
         try:
             existing_ref = repo.get_git_ref(f"heads/{new_branch_name}")
-            logging.warning(f"Branch '{new_branch_name}' already exists, using existing")
+            logging.warning(
+                f"Branch '{new_branch_name}' already exists, using existing"
+            )
             return existing_ref
         except Exception:
             pass  # Branch doesn't exist, create it
 
         base_ref = repo.get_git_ref(f"heads/{base_branch}")
-        repo.create_git_ref(ref=f"refs/heads/{new_branch_name}", sha=base_ref.object.sha)
+        repo.create_git_ref(
+            ref=f"refs/heads/{new_branch_name}", sha=base_ref.object.sha
+        )
         logging.info(f"Created branch '{new_branch_name}' from '{base_branch}'")
         return repo.get_git_ref(f"heads/{new_branch_name}")
     except Exception as e:
@@ -531,7 +579,9 @@ def create_commit_with_changes(repo, branch_ref, changes, commit_message):
         new_blobs = []
         for file_path, content in changes.items():
             blob = repo.create_git_blob(content, "utf-8")
-            new_blobs.append({"path": file_path, "mode": "100644", "type": "blob", "sha": blob.sha})  # Regular file
+            new_blobs.append(
+                {"path": file_path, "mode": "100644", "type": "blob", "sha": blob.sha}
+            )  # Regular file
 
         # Create new tree
         tree = repo.create_git_tree(new_blobs, base_tree=current_tree)
@@ -539,7 +589,9 @@ def create_commit_with_changes(repo, branch_ref, changes, commit_message):
             "name": "HarperBot",
             "email": "236089746+harper-bot-glitch@users.noreply.github.com",
         }
-        commit = repo.create_git_commit(commit_message, tree, [current_commit], author=author)
+        commit = repo.create_git_commit(
+            commit_message, tree, [current_commit], author=author
+        )
         branch_ref.edit(commit.sha)
         logging.info(f"Created commit with {len(changes)} file changes")
         return commit
@@ -563,7 +615,9 @@ def create_improvement_pr(repo, head_branch, base_branch, title, body):
         The created pull request
     """
     try:
-        pr = repo.create_pull(title=title, body=body, head=head_branch, base=base_branch)
+        pr = repo.create_pull(
+            title=title, body=body, head=head_branch, base=base_branch
+        )
         logging.info(f"Created improvement PR #{pr.number}: {title}")
         return pr
     except Exception as e:
@@ -610,7 +664,9 @@ def apply_suggestions_to_pr(repo, pr, suggestions):
             offset = 0
             applied = False
             for line, suggestion in suggs:
-                adjusted_line = line - 1 + offset  # Convert to 0-based and adjust for previous changes
+                adjusted_line = (
+                    line - 1 + offset
+                )  # Convert to 0-based and adjust for previous changes
 
                 if not (0 <= adjusted_line < len(lines)):
                     logging.warning(
@@ -622,7 +678,11 @@ def apply_suggestions_to_pr(repo, pr, suggestions):
                 num_old = 1  # Assume replacing 1 line (simplified; full diff parsing needed for accurate replacements)
                 num_new = len(sugg_lines)
 
-                lines = lines[:adjusted_line] + sugg_lines + lines[adjusted_line + num_old :]
+                lines = (
+                    lines[:adjusted_line]
+                    + sugg_lines
+                    + lines[adjusted_line + num_old :]
+                )
                 offset += num_new - num_old
                 applied = True
 
@@ -636,7 +696,9 @@ def apply_suggestions_to_pr(repo, pr, suggestions):
                 changes,
                 "Apply code suggestions from HarperBot analysis",
             )
-            logging.info(f"Applied {len(suggestion_groups)} file changes to PR #{pr.number}")
+            logging.info(
+                f"Applied {len(suggestion_groups)} file changes to PR #{pr.number}"
+            )
     except Exception as e:
         logging.error(f"Error applying suggestions to PR: {str(e)}")
 
@@ -657,15 +719,21 @@ def create_improvement_pr_from_analysis(repo, pr_details, analysis, config):
         timestamp = str(int(time.time()))
 
         # Generate branch name
-        branch_pattern = config.get("improvement_branch_pattern", "harperbot-improvements-{timestamp}")
-        branch_name = branch_pattern.replace("{timestamp}", timestamp).replace("{pr_number}", str(pr_details["number"]))
+        branch_pattern = config.get(
+            "improvement_branch_pattern", "harperbot-improvements-{timestamp}"
+        )
+        branch_name = branch_pattern.replace("{timestamp}", timestamp).replace(
+            "{pr_number}", str(pr_details["number"])
+        )
 
         # Create branch from main/master
         base_branch = pr_details.get("base", "main")
         branch_ref = create_branch(repo, base_branch, branch_name)
 
         # Create an initial empty commit to allow PR creation
-        create_commit_with_changes(repo, branch_ref, {}, "Initial commit for HarperBot improvements")
+        create_commit_with_changes(
+            repo, branch_ref, {}, "Initial commit for HarperBot improvements"
+        )
 
         # For now, create an empty improvement PR (could be extended to include actual improvements)
         title = f"HarperBot Improvements for PR #{pr_details['number']}"
@@ -695,7 +763,11 @@ def update_main_comment(analysis):
     end_pos = analysis.find("###", start_pos + 21)
     if end_pos == -1:
         end_pos = len(analysis)
-    return analysis[:start_pos] + "### Code Suggestions\n- Suggestions posted as inline comments below.\n" + analysis[end_pos:]
+    return (
+        analysis[:start_pos]
+        + "### Code Suggestions\n- Suggestions posted as inline comments below.\n"
+        + analysis[end_pos:]
+    )
 
 
 def post_inline_suggestions(pr, pr_details, suggestions, github_token, repo):
@@ -709,13 +781,17 @@ def post_inline_suggestions(pr, pr_details, suggestions, github_token, repo):
             try:
                 line_num = int(line)
             except (ValueError, TypeError):
-                logging.warning(f"Invalid line number format '{line}' for suggestion in '{file_path}'. Skipping.")
+                logging.warning(
+                    f"Invalid line number format '{line}' for suggestion in '{file_path}'. Skipping."
+                )
                 continue
 
             position = find_diff_position(pr_details["diff"], file_path, line_num)
             if position is not None:
                 body = f"```suggestion\n{suggestion}\n```"
-                review_comments.append({"path": file_path, "position": position, "body": body})
+                review_comments.append(
+                    {"path": file_path, "position": position, "body": body}
+                )
         if review_comments:
             pr.create_review(commit=commit, comments=review_comments, event="COMMENT")
             logging.info(f"Posted {len(review_comments)} inline suggestions")
@@ -758,7 +834,9 @@ def setup_environment_webhook(installation_id):
     This provides secure, scoped access without storing long-lived tokens.
     """
     load_dotenv()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
 
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     app_id = os.getenv("HARPER_BOT_APP_ID")
@@ -799,7 +877,9 @@ def get_pr_details_webhook(g, repo_name, pr_number):
     }
 
 
-def post_comment_webhook(github_token: str, repo_name: str, pr_details: dict, analysis: str):
+def post_comment_webhook(
+    github_token: str, repo_name: str, pr_details: dict, analysis: str
+):
     """
     Post analysis comment and inline suggestions using GitHub App auth.
 
@@ -833,7 +913,9 @@ def post_comment_webhook(github_token: str, repo_name: str, pr_details: dict, an
                 create_improvement_pr_from_analysis(repo, pr_details, analysis, config)
 
     except Exception as e:
-        logging.error(f"Error posting comment to PR #{pr_details.get('number', 'unknown')}: {str(e)}")
+        logging.error(
+            f"Error posting comment to PR #{pr_details.get('number', 'unknown')}: {str(e)}"
+        )
         raise
 
 
@@ -901,7 +983,9 @@ def main():
     """Main function to run the PR bot."""
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="GitHub PR Bot with Gemini AI")
-    parser.add_argument("--repo", required=True, help="GitHub repository in format: owner/repo")
+    parser.add_argument(
+        "--repo", required=True, help="GitHub repository in format: owner/repo"
+    )
     parser.add_argument("--pr", type=int, required=True, help="Pull request number")
     args = parser.parse_args()
 
@@ -937,6 +1021,8 @@ if __name__ == "__main__":
             # use a WSGI server like Gunicorn: gunicorn -w 4 harperbot:app
             app.run(debug=False)
         else:
-            print("Flask not installed. For webhook mode, install with: pip install flask")
+            print(
+                "Flask not installed. For webhook mode, install with: pip install flask"
+            )
             print("For CLI mode, run: python harperbot.py --repo owner/repo --pr 123")
             sys.exit(1)
